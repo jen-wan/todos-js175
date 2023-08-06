@@ -1,0 +1,22 @@
+{
+  "name": "todos-js175",
+  "version": "1.0.0",
+  "description": "",
+  "main": "todos.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/jen-wan/todos-js175.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jen-wan/todos-js175/issues"
+  },
+  "homepage": "https://github.com/jen-wan/todos-js175#readme"
+}
