@@ -21,6 +21,8 @@
   "homepage": "https://github.com/jen-wan/todos-js175#readme",
   "dependencies": {
     "express": "^4.18.2",
+    "express-flash": "^0.0.2",
+    "express-session": "^1.17.3",
     "morgan": "^1.10.0",
     "pug": "^3.0.2"
   },
