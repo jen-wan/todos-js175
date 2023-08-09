@@ -70,7 +70,7 @@ app.post("/lists", // sets up route for handling POST requests to "/lists" URL e
       })
       .withMessage("List title must be unique."),
   ],
-  (req, res) => { // Defines the error handler function that is executed when "/lists" route is accessed with Post request.
+  (req, res) => { // Defines the route handler function that is executed when "/lists" route is accessed with Post request.
     let errors = validationResult(req); // Uses express-validator library to gather results of validation checks performed on the request.
     if (!errors.isEmpty()) { // Checks if there are any validation errors.
       errors.array().forEach(message => req.flash("error", message.msg)); // adds each validation error message to flash message with key "error".
@@ -116,35 +116,33 @@ const loadTodoList = todoListId => {
 // Returns `undefined` if not found. Note that both `todoListId` and `todoId` must be numeric.
 const loadTodo = (todoListId, todoId) => {
   let todoList = loadTodoList(todoListId);
-  if (!todoList) return undefined;
-
-  return todoList.todos.find(todo => todo.id === todoId);
+  return todoList.find(todo => todo.id === todoId);
 };
 
 // Toggle completion status of a todo
-app.post("/lists/:todoList.id/todos/:todo.id/toggle", (req, res, next) => {
-  let { todoListId, todoId } = { ...req.params};
-  let todo = loadTodo(+todoListId, +todoId); // convert URL parameters to numbers
-  if (!todo) {
+app.post("/lists/:todoListId/todos/:todoId/toggle", (req, res, next) => {
+  // access the route parameter values from req.params
+  let {todoListId, todoId} = {...req.params}; // object destructuring syntax with spread syntax
+  // search for the todo based on todoId and todoListId, to toggle it
+  let todo = loadTodo(+todoListId, +todoId); // convert todoListId and todoId to numeric
+  if (todo === undefined) {
     next(new Error("Not Found."));
   } else {
     let title = todo.title;
     if (todo.isDone()) {
       todo.markUndone();
-      req.flash("success", `"${title}" marked as NOT done!`);
+      req.flash()
     } else {
       todo.markDone();
-      req.flash("success", `"${title}" marked done.`);
     }
   }
 });
 
 // Error handler
 app.use((err, req, res, _next) => {
-  console.log(err); // Writes more extensive information to the console log
+  console.log(err);
   res.status(404).send(err.message);
 });
-
 
 // Listener
 app.listen(port, host, () => {
