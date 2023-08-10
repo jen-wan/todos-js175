@@ -5,6 +5,7 @@ const flash = require("express-flash");
 const session = require("express-session");
 const { body, validationResult } = require("express-validator");
 const TodoList = require("./lib/todolist");
+const Todo = require("./lib/todo.js");
 const { sortTodoLists, sortTodos } = require("./lib/sort");
 
 const app = express(); // create the Express application object, app
@@ -104,7 +105,7 @@ const loadTodo = (todoListId, todoId) => {
 app.get("/lists/:todoListId", (req, res, next) => { // Route parameters use the : syntax
   let todoListId = req.params.todoListId;
   let todoList = loadTodoList(+todoListId); // + converts string to a number.
-  if (todoList === undefined) {
+  if (!todoList) {
     next(new Error("Not found."));
   } else {
     res.render("list", {
@@ -152,6 +153,54 @@ app.post("/lists/:todoListId/todos/:todoId/destroy", (req, res, next) => {
     }
   }
 });
+
+// Complete all todos
+app.post("/lists/:todoListId/complete_all", (req, res, next) => {
+  let {todoListId} = {...req.params}; // object destructuring syntax with spread syntax to make copy of req.params object
+  let todoList = loadTodoList(+todoListId);
+  if (!todoList) {
+    next(new Error("Not found."));
+  } else {
+    todoList.markAllDone();
+    req.flash("Success", "All todos have been marked as done.");
+    res.redirect(`/lists/${todoListId}`); // todoList.id would work but we created this variable so let's use it.
+  }
+});
+
+// Create a new todo and add it to the specified list.
+app.post("/lists/:todoListId/todos",
+  [ // Use express-validator library for form validation
+    body("todoTitle")
+      .trim()
+      .isLength({ min: 1 })
+      .withMessage("The title must be at least 1 character long.")
+      .isLength({ max: 100 })
+      .withMessage("The title must be between 1 and 100 characters.")
+  ],
+  (req, res, next) => { // handler function
+    let todoListId = req.params.todoListId;
+    let todoList = loadTodoList(+todoListId);
+    if (!todoList) {
+      next(new Error("Not found."));
+    } else {
+      let errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        errors.array().forEach(message => req.flash("error", message.msg));
+        res.render("list", {
+          flash: req.flash(),
+          todoList: todoList,
+          todos: sortTodos(todoList), // make sure todos are sorted.
+          todoTitle: req.body.todoTitle, // Preserve user input by adding it as a property on object passed to res.render
+        });
+      } else {
+        let todo = new Todo(req.body.todoTitle); // we imported Todo, use the constructor to create new todo object.
+        todoList.add(todo);
+        req.flash("Success", "The todo has been created.");
+        res.redirect(`/lists/${todoListId}`);
+      }
+    }
+  }
+);
 
 // Error handler
 app.use((err, req, res, _next) => {
