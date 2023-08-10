@@ -55,9 +55,9 @@ app.get("/lists/new", (req, res) => {
   res.render("new-list");
 });
 
-// Create a new todo List, using express-validator library for form validation
+// Create a new todo List, because new-list template links to here
 app.post("/lists", // sets up route for handling POST requests to "/lists" URL endpoint
-  [
+  [ // Use express-validator library for form validation
     body("todoListTitle") // targets the todoListTitle field in request body and applies validation checks to it.
       .trim()
       .isLength({ min: 1 })
@@ -86,6 +86,20 @@ app.post("/lists", // sets up route for handling POST requests to "/lists" URL e
   }
 );
 
+// Find a todo list with the indicated ID. Returns `undefined` if not found.
+// Note that `todoListId` must be numeric.
+const loadTodoList = todoListId => {
+  return todoLists.find(todoList => todoList.id === todoListId);
+};
+
+// Find a todo with the indicated ID in the indicated todo list.
+// Returns `undefined` if not found. Note that both `todoListId` and `todoId` must be numeric.
+const loadTodo = (todoListId, todoId) => {
+  let todoList = loadTodoList(todoListId);
+  if (!todoList) return undefined; // if requested todoList doesn't exist
+  return todoList.todos.find(todo => todo.id === todoId);
+};
+
 // Render individual todo list and its todos
 app.get("/lists/:todoListId", (req, res, next) => { // Route parameters use the : syntax
   let todoListId = req.params.todoListId;
@@ -100,40 +114,41 @@ app.get("/lists/:todoListId", (req, res, next) => { // Route parameters use the 
   }
 });
 
-// Error handler
-app.use((err, req, res, _next) => {
-  console.log(err); // Writes more extensive information to the console log
-  res.status(404).send(err.message);
-});
-
-// Find a todo list with the indicated ID. Returns `undefined` if not found.
-// Note that `todoListId` must be numeric.
-const loadTodoList = todoListId => {
-  return todoLists.find(todoList => todoList.id === todoListId);
-};
-
-// Find a todo with the indicated ID in the indicated todo list.
-// Returns `undefined` if not found. Note that both `todoListId` and `todoId` must be numeric.
-const loadTodo = (todoListId, todoId) => {
-  let todoList = loadTodoList(todoListId);
-  return todoList.find(todo => todo.id === todoId);
-};
-
 // Toggle completion status of a todo
-app.post("/lists/:todoListId/todos/:todoId/toggle", (req, res, next) => {
-  // access the route parameter values from req.params
-  let {todoListId, todoId} = {...req.params}; // object destructuring syntax with spread syntax
+app.post("/lists/:todoListId/todos/:todoId/toggle", (req, res, next) => { // Notice this is a parameterized route.
+  let { todoListId, todoId } = { ...req.params };   // access the route parameter values from req.params
   // search for the todo based on todoId and todoListId, to toggle it
-  let todo = loadTodo(+todoListId, +todoId); // convert todoListId and todoId to numeric
-  if (todo === undefined) {
-    next(new Error("Not Found."));
+  let todo = loadTodo(+todoListId, +todoId);   // convert todoListId and todoId to numeric
+  if (!todo) {
+    next(new Error("Not found."));
   } else {
     let title = todo.title;
     if (todo.isDone()) {
       todo.markUndone();
-      req.flash()
+      req.flash("success", `"${title}" marked as not done.`);
     } else {
       todo.markDone();
+      req.flash("success", `"${title}" marked done.`);
+    }
+
+    res.redirect(`/lists/${todoListId}`); //Need to redirect back to this route to render the individual todo list.
+  }
+});
+
+// Delete a todo
+app.post("/lists/:todoListId/todos/:todoId/destroy", (req, res, next) => {
+  let { todoListId, todoId } = {...req.params};
+  let todoList = loadTodoList(+todoListId);
+  if (!todoList) {
+    next(new Error("Not Found."));
+  } else {
+    let todo = loadTodo(+todoListId, +todoId);
+    if (!todo) {
+      next(new Error("Not Found."));
+    } else {
+      todoList.removeAt(todoList.findIndexOf(todo));
+      req.flash("Success", "The todo has been deleted.");
+      res.redirect(`/lists/${todoListId}`);
     }
   }
 });
