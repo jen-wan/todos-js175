@@ -216,19 +216,7 @@ app.get("/lists/:todoListId/edit", (req, res, next) => {
   }
 });
 
-// app.post("/lists/:todoListId/destroy", (req, res, next) => {
-//   // verify todo list exists
-//   let todoListId = +req.params.todoListId;
-//   let index = todoLists.findIndex(todoList => todoList.id === todoListId);
-//   if (index === -1) {
-//     next(new Error("Not Found."));
-//   } else {
-//     todoLists.splice(index, 1); // delete todo list from todoLists array
-//     req.flash("success", "Todo list deleted."); // success flash message
-//     res.redirect("/lists"); // redirect back to the main page(list of todo lists)
-//   }
-// });
-
+// Delete todo list
 app.post("/lists/:todoListId/destroy", (req, res, next) => {
   let todoListId = req.params.todoListId;
   let todoList = loadTodoList(+todoListId);
@@ -241,6 +229,47 @@ app.post("/lists/:todoListId/destroy", (req, res, next) => {
     res.redirect("/lists"); // redirect back to the main page(list of todo lists)
   }
 });
+
+// Edit todo list title
+// If title is present and between 1 and 100 characters in length
+  // Update todo list and send browser back to list view for the todo list with succes message
+// Else redisplay list-view with flash error message
+app.post("/lists/:todoListId/edit",
+  [
+    body("todoListTitle")
+      .trim()
+      .isLength({ min: 1 })
+      .withMessage("The title must be at least 1 character long.")
+      .isLength({ max: 100 })
+      .withMessage("The title must be between 1 and 100 characters")
+      .custom(title => { // custom() method for express-validator
+        let duplicate = todoLists.find(list => list.title === title);
+        return duplicate === undefined; // return true if no duplicates
+      })
+      .withMessage("List title must be unique.")
+  ],
+  (req, res, next) => {
+    let todoListId = req.params.todoListId; // First verify that todo list exists.
+    let todoList = loadTodoList(+todoListId);
+    if (!todoList) {
+      next(new Error("Not Found."));
+    } else {
+      let errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        errors.array().forEach(message => req.flash("error", message.msg));
+        res.render("edit-list", {
+          flash: req.flash(),
+          todoListTitle: req.body.todoListTitle,
+          todoList: todoList
+        });
+      } else {
+        todoList.setTitle(req.body.todoListTitle);
+        req.flash("success", "Todo list updated.");
+        res.redirect(`/lists/${todoListId}`);
+      }
+    }
+  }
+);
 
 // Error handler
 app.use((err, req, res, _next) => {
