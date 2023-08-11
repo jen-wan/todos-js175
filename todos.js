@@ -97,7 +97,7 @@ const loadTodoList = todoListId => {
 // Returns `undefined` if not found. Note that both `todoListId` and `todoId` must be numeric.
 const loadTodo = (todoListId, todoId) => {
   let todoList = loadTodoList(todoListId);
-  if (!todoList) return undefined; // if requested todoList doesn't exist
+  if (!todoList) return undefined; // first make sure todoList exists
   return todoList.todos.find(todo => todo.id === todoId);
 };
 
@@ -169,38 +169,78 @@ app.post("/lists/:todoListId/complete_all", (req, res, next) => {
 
 // Create a new todo and add it to the specified list.
 app.post("/lists/:todoListId/todos",
-  [ // Use express-validator library for form validation
+  [
     body("todoTitle")
       .trim()
       .isLength({ min: 1 })
       .withMessage("The title must be at least 1 character long.")
       .isLength({ max: 100 })
-      .withMessage("The title must be between 1 and 100 characters.")
+      .withMessage("The title must be between 1 and 100 characters")
   ],
-  (req, res, next) => { // handler function
+  (req, res, next) => {
+    // step 1: check if the todoList is valid
     let todoListId = req.params.todoListId;
     let todoList = loadTodoList(+todoListId);
     if (!todoList) {
-      next(new Error("Not found."));
+      next(new Error("Not Found."));
     } else {
+      // Check if there were errors
       let errors = validationResult(req);
+      // If there are errors, render list view with the error flash messages
       if (!errors.isEmpty()) {
         errors.array().forEach(message => req.flash("error", message.msg));
-        res.render("list", {
+        res.render("/list", {
           flash: req.flash(),
           todoList: todoList,
-          todos: sortTodos(todoList), // make sure todos are sorted.
-          todoTitle: req.body.todoTitle, // Preserve user input by adding it as a property on object passed to res.render
+          todos: sortTodos(todoList), // sortTodos returns an array of sorted todos.
+          todoTitle: req.body.todoTitle // get HTTP post input values from req.body
         });
-      } else {
+      } else { // if there aren't errors, render a new list page with new todo
         let todo = new Todo(req.body.todoTitle); // we imported Todo, use the constructor to create new todo object.
         todoList.add(todo);
         req.flash("Success", "The todo has been created.");
-        res.redirect(`/lists/${todoListId}`);
+        res.redirect(`/lists/${todoListId}`); // redirect to render the lists view.
       }
     }
   }
 );
+
+// Render the edit todo list form
+app.get("/lists/:todoListId/edit", (req, res, next) => {
+  let todoListId = req.params.todoListId;
+  let todoList = loadTodoList(+todoListId);
+  if (!todoList) {
+    next(new Error("Not Found."));
+  } else {
+    res.render("edit-list", { todoList });
+  }
+});
+
+// app.post("/lists/:todoListId/destroy", (req, res, next) => {
+//   // verify todo list exists
+//   let todoListId = +req.params.todoListId;
+//   let index = todoLists.findIndex(todoList => todoList.id === todoListId);
+//   if (index === -1) {
+//     next(new Error("Not Found."));
+//   } else {
+//     todoLists.splice(index, 1); // delete todo list from todoLists array
+//     req.flash("success", "Todo list deleted."); // success flash message
+//     res.redirect("/lists"); // redirect back to the main page(list of todo lists)
+//   }
+// });
+
+app.post("/lists/:todoListId/destroy", (req, res, next) => {
+  let todoListId = req.params.todoListId;
+  let todoList = loadTodoList(+todoListId);
+  if (!todoList) {   // verify todo list exists
+    next(new Error("Not Found."));
+  } else {
+    let index = todoLists.findIndex(todoList => todoList.id === todoListId);
+    todoLists.splice(index, 1);
+    req.flash("success", "Todo list deleted."); // success flash message
+    res.redirect("/lists"); // redirect back to the main page(list of todo lists)
+  }
+});
 
 // Error handler
 app.use((err, req, res, _next) => {
