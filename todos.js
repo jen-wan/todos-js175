@@ -7,6 +7,7 @@ const { body, validationResult } = require("express-validator");
 const TodoList = require("./lib/todolist");
 const Todo = require("./lib/todo.js");
 const { sortTodoLists, sortTodos } = require("./lib/sort");
+const store = require("connect-loki");
 
 const app = express(); // create the Express application object, app
 const host = "localhost";
@@ -276,6 +277,21 @@ app.use((err, req, res, _next) => {
   console.log(err);
   res.status(404).send(err.message);
 });
+
+// Configure our session cookie
+app.use(session({
+  cookie: {
+    httpOnly: true,
+    maxAge: 31 * 24 * 60 * 60 * 1000, // 31 days in millseconds
+    path: "/",
+    secure: false,
+  },
+  name: "launch-school-todos-session-id",
+  resave: false,
+  saveUninitialized: true,
+  secret: "this is not very secure",
+  store: new LokiStore({}),
+}));
 
 // Listener
 app.listen(port, host, () => {
