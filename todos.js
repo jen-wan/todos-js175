@@ -5,16 +5,14 @@ const flash = require("express-flash");
 const session = require("express-session");
 const { body, validationResult } = require("express-validator");
 const TodoList = require("./lib/todolist");
-const Todo = require("./lib/todo.js");
+const Todo = require("./lib/todo");
 const { sortTodoLists, sortTodos } = require("./lib/sort");
 const store = require("connect-loki");
 
-const app = express(); // create the Express application object, app
+const app = express();
 const host = "localhost";
 const port = 3000;
-
-// Static data for initial testing
-let todoLists = require("./lib/seed-data");
+const LokiStore = store(session);
 
 app.set("views", "./views");
 app.set("view engine", "pug");
@@ -23,16 +21,36 @@ app.use(morgan("common"));
 app.use(express.static("public")); // tells Express to find static assets in public directory
 app.use(express.urlencoded({ extended: false })); // tell Express what format to use for form data: URL-encoded.
 
-// Adds session management middleware to our Express.js app.
-app.use(session({
-  name: "launch-school-todos-session-id", // specifies name of session cookie.
-  resave: false, // Controls whether seession data should be saved to session store even if it hasn't changed.
-  saveUninitialized: true, // Determines whether a seession sould be saved if it's uninitialized(new but not modified).
-  secret: "this is not very secure", // Secret key used to sign session cookie to enhhance security.
-}));
-
 // Adds flash messages middlware to our Express.js app.
 app.use(flash());
+
+// Configure our session cookie. Adds session management middleware to our Express.js app
+app.use(session({
+  cookie: {
+    httpOnly: true,
+    maxAge: 31 * 24 * 60 * 60 * 1000, // 31 days in millseconds
+    path: "/",
+    secure: false,
+  },
+  name: "launch-school-todos-session-id", // specifies name of session cookie.
+  resave: false, // Controls whether seession data should be saved to session store even if it hasn't changed.
+  saveUninitialized: true, //// Determines whether a session sould be saved if it's uninitialized(new but not modified).
+  secret: "this is not very secure",
+  store: new LokiStore({}),
+}));
+
+// Set up persistent session data
+app.use((req, res, next) => {
+  let todoLists = [];
+  if ("todoLists" in req.session) {
+    req.session.todoLists.forEach(todoList => {
+      todoLists.push(TodoList.makeTodoList(todoList));
+    });
+  }
+
+  req.session.todoLists = todoLists;
+  next();
+});
 
 // Extract session info so that flash messages before redirect are available
 // for use in views rendered by res.render.
@@ -42,6 +60,21 @@ app.use((req, res, next) => {
   next();
 });
 
+// Find a todo list with the indicated ID. Returns `undefined` if not found.
+// Note that `todoListId` must be numeric.
+const loadTodoList = (todoListId, todoLists) => {
+  return todoLists.find(todoList => todoList.id === todoListId);
+};
+
+// Find a todo with the indicated ID in the indicated todo list.
+// Returns `undefined` if not found. Note that both `todoListId` and `todoId` must be numeric.
+const loadTodo = (todoListId, todoId, todoLists) => {
+  let todoList = loadTodoList(todoListId, todoLists);
+  if (!todoList) return undefined;
+
+  return todoList.todos.find(todo => todo.id === todoId);
+};
+
 // Primary route for app, redirect the start page.
 app.get("/", (req, res) => {
   res.redirect("/lists");
@@ -49,7 +82,7 @@ app.get("/", (req, res) => {
 
 // Render the list of todo lists
 app.get("/lists", (req, res) => {
-  res.render("lists", { todoLists: sortTodoLists(todoLists) });
+  res.render("lists", { todoLists: sortTodoLists(req.session.todoLists) });
 });
 
 // Render new todo list page
@@ -66,7 +99,8 @@ app.post("/lists", // sets up route for handling POST requests to "/lists" URL e
       .withMessage("The list title is required.") // error message is attached if validation check fails.
       .isLength({ max: 100 })
       .withMessage("List title must be between 1 and 100 characters.")
-      .custom(title => {
+      .custom((title, { req }) => {
+        let todoLists = req.session.todoLists;
         let duplicate = todoLists.find(list => list.title === title);
         return duplicate === undefined;
       })
@@ -81,31 +115,17 @@ app.post("/lists", // sets up route for handling POST requests to "/lists" URL e
         todoListTitle: req.body.todoListTitle,
       });
     } else { // Primary callback for route: If no validation errors, add new instance of TodoList class to todoLists array.
-      todoLists.push(new TodoList(req.body.todoListTitle));
+      req.session.todoLists.push(new TodoList(req.body.todoListTitle));
       req.flash("success", "The todo list has been created."); // success flash message
       res.redirect("/lists"); // The response redirects user to "/lists" URL after successfully creating todo list.
     }
   }
 );
 
-// Find a todo list with the indicated ID. Returns `undefined` if not found.
-// Note that `todoListId` must be numeric.
-const loadTodoList = todoListId => {
-  return todoLists.find(todoList => todoList.id === todoListId);
-};
-
-// Find a todo with the indicated ID in the indicated todo list.
-// Returns `undefined` if not found. Note that both `todoListId` and `todoId` must be numeric.
-const loadTodo = (todoListId, todoId) => {
-  let todoList = loadTodoList(todoListId);
-  if (!todoList) return undefined; // first make sure todoList exists
-  return todoList.todos.find(todo => todo.id === todoId);
-};
-
 // Render individual todo list and its todos
 app.get("/lists/:todoListId", (req, res, next) => { // Route parameters use the : syntax
   let todoListId = req.params.todoListId;
-  let todoList = loadTodoList(+todoListId); // + converts string to a number.
+  let todoList = loadTodoList(+todoListId, req.session.todoLists); // + converts string to a number.
   if (!todoList) {
     next(new Error("Not found."));
   } else {
@@ -120,7 +140,7 @@ app.get("/lists/:todoListId", (req, res, next) => { // Route parameters use the 
 app.post("/lists/:todoListId/todos/:todoId/toggle", (req, res, next) => { // Notice this is a parameterized route.
   let { todoListId, todoId } = { ...req.params };   // access the route parameter values from req.params
   // search for the todo based on todoId and todoListId, to toggle it
-  let todo = loadTodo(+todoListId, +todoId);   // convert todoListId and todoId to numeric
+  let todo = loadTodo(+todoListId, +todoId, req.session.todoLists);   // convert todoListId and todoId to numeric
   if (!todo) {
     next(new Error("Not found."));
   } else {
@@ -140,11 +160,11 @@ app.post("/lists/:todoListId/todos/:todoId/toggle", (req, res, next) => { // Not
 // Delete a todo
 app.post("/lists/:todoListId/todos/:todoId/destroy", (req, res, next) => {
   let { todoListId, todoId } = {...req.params};
-  let todoList = loadTodoList(+todoListId);
+  let todoList = loadTodoList(+todoListId, req.session.todoLists);
   if (!todoList) {
     next(new Error("Not Found."));
   } else {
-    let todo = loadTodo(+todoListId, +todoId);
+    let todo = loadTodo(+todoListId, +todoId, req.session.todoLists);
     if (!todo) {
       next(new Error("Not Found."));
     } else {
@@ -155,10 +175,10 @@ app.post("/lists/:todoListId/todos/:todoId/destroy", (req, res, next) => {
   }
 });
 
-// Complete all todos
+// Mark all todos as done.
 app.post("/lists/:todoListId/complete_all", (req, res, next) => {
   let {todoListId} = {...req.params}; // object destructuring syntax with spread syntax to make copy of req.params object
-  let todoList = loadTodoList(+todoListId);
+  let todoList = loadTodoList(+todoListId, req.session.todoLists);
   if (!todoList) {
     next(new Error("Not found."));
   } else {
@@ -181,7 +201,7 @@ app.post("/lists/:todoListId/todos",
   (req, res, next) => {
     // step 1: check if the todoList is valid
     let todoListId = req.params.todoListId;
-    let todoList = loadTodoList(+todoListId);
+    let todoList = loadTodoList(+todoListId, req.session.todoLists);
     if (!todoList) {
       next(new Error("Not Found."));
     } else {
@@ -209,7 +229,7 @@ app.post("/lists/:todoListId/todos",
 // Render the edit todo list form
 app.get("/lists/:todoListId/edit", (req, res, next) => {
   let todoListId = req.params.todoListId;
-  let todoList = loadTodoList(+todoListId);
+  let todoList = loadTodoList(+todoListId, req.session.todoLists);
   if (!todoList) {
     next(new Error("Not Found."));
   } else {
@@ -220,7 +240,7 @@ app.get("/lists/:todoListId/edit", (req, res, next) => {
 // Delete todo list
 app.post("/lists/:todoListId/destroy", (req, res, next) => {
   let todoListId = req.params.todoListId;
-  let todoList = loadTodoList(+todoListId);
+  let todoList = loadTodoList(+todoListId, req.session.todoLists);
   if (!todoList) {   // verify todo list exists
     next(new Error("Not Found."));
   } else {
@@ -243,7 +263,8 @@ app.post("/lists/:todoListId/edit",
       .withMessage("The title must be at least 1 character long.")
       .isLength({ max: 100 })
       .withMessage("The title must be between 1 and 100 characters")
-      .custom(title => { // custom() method for express-validator
+      .custom((title, { req }) => { // custom() method for express-validator
+        let todoLists = req.session.todoLists;
         let duplicate = todoLists.find(list => list.title === title);
         return duplicate === undefined; // return true if no duplicates
       })
@@ -251,7 +272,7 @@ app.post("/lists/:todoListId/edit",
   ],
   (req, res, next) => {
     let todoListId = req.params.todoListId; // First verify that todo list exists.
-    let todoList = loadTodoList(+todoListId);
+    let todoList = loadTodoList(+todoListId, req.session.todoLists);
     if (!todoList) {
       next(new Error("Not Found."));
     } else {
@@ -277,21 +298,6 @@ app.use((err, req, res, _next) => {
   console.log(err);
   res.status(404).send(err.message);
 });
-
-// Configure our session cookie
-app.use(session({
-  cookie: {
-    httpOnly: true,
-    maxAge: 31 * 24 * 60 * 60 * 1000, // 31 days in millseconds
-    path: "/",
-    secure: false,
-  },
-  name: "launch-school-todos-session-id",
-  resave: false,
-  saveUninitialized: true,
-  secret: "this is not very secure",
-  store: new LokiStore({}),
-}));
 
 // Listener
 app.listen(port, host, () => {
