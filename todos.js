@@ -18,7 +18,7 @@ app.set("views", "./views");
 app.set("view engine", "pug");
 
 app.use(morgan("common"));
-app.use(express.static("public")); // tells Express to find static assets in public directory
+app.use(express.static("public")); // tells Express to find static assets in the public directory
 app.use(express.urlencoded({ extended: false })); // tell Express what format to use for form data: URL-encoded.
 
 // Adds flash messages middlware to our Express.js app.
